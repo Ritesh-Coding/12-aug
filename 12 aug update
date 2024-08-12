@@ -1,0 +1,133 @@
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { Button } from 'react-bootstrap';
+import appClient from '../../../network/AppClient';
+import { Modal } from 'react-bootstrap';
+import TimePicker from 'react-time-picker';
+import 'react-time-picker/dist/TimePicker.css';
+
+interface AttenDanceUpdate {
+  id: number;
+  first_name: string;
+  last_name: string;
+  status: string;
+  status_time: string; // ISO 8601 format e.g., "2024-08-12T08:30:00Z"
+}
+
+const UpdateAttendance: React.FC = () => {
+  const { userId } = useParams();
+  const [attendance, setAttendance] = useState<AttenDanceUpdate[]>([]);
+  const [time, setTime] = useState('10:00'); // Default time for the TimePicker
+  const [showUpdateModal, setShowUpdateModal] = useState<boolean>(false);
+  const [selectedAttendance, setSelectedAttendance] = useState<AttenDanceUpdate | null>(null);
+
+  // Function to fetch attendance data for the user
+  const fetchAttendanceData = async () => {
+    try {
+      const result = await appClient.get(`todayEmployeeActivity/?id=${userId}`);
+      setAttendance(result.data);
+    } catch (error) {
+      console.error('Error fetching attendance data:', error);
+    }
+  };
+
+  // Function to handle when the "Update" button is clicked
+  const updateTime = (attendance: AttenDanceUpdate) => {
+    setSelectedAttendance(attendance);
+    // Set the initial time in the TimePicker to the current time portion of status_time
+    setTime(attendance.status_time.slice(11, 16)); // Extracting "HH:mm"
+    setShowUpdateModal(true);
+  };
+
+  // Function to handle when the time is updated and submitted
+  const UpdateAttendanceTime = async (time: string) => {
+    if (selectedAttendance) {
+      // Parse the existing date and time from the status_time field
+      const existingDateTime = new Date(selectedAttendance.status_time);
+
+      // Extract hours and minutes from the selected time
+      const [hours, minutes] = time.split(':').map(Number);
+
+      // Update the existing Date object with the new time
+      existingDateTime.setHours(hours, minutes, 0, 0);
+
+      // Convert the updated Date object to UTC format
+      const utcTime = existingDateTime.toISOString();
+
+      // Update the attendance data with the new UTC time
+      try {
+        await appClient.put(`updateAttendance/${selectedAttendance.id}`, {
+          ...selectedAttendance,
+          status_time: utcTime,
+        });
+        setShowUpdateModal(false);
+        fetchAttendanceData();
+      } catch (error) {
+        console.error('Error updating attendance time:', error);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchAttendanceData();
+  }, []);
+
+  const handleTimeChange = (time: string) => {
+    setTime(time);
+  };
+
+  return (
+    <div style={{ marginLeft: `260px` }}>
+      <table className="table">
+        <thead>
+          <tr>
+            <th scope="col">Id</th>
+            <th scope="col">FirstName</th>
+            <th scope="col">LastName</th>
+            <th scope="col">Status</th>
+            <th scope="col">Status Time</th>
+            <th scope="col">Update</th>
+          </tr>
+        </thead>
+        <tbody>
+          {attendance.map((att, index) => (
+            <tr key={index}>
+              <th scope="row">{att.id}</th>
+              <th scope="row">{att.first_name}</th>
+              <th scope="row">{att.last_name}</th>
+              <td>{att.status}</td>
+              <td>{att.status_time}</td>
+              <td>
+                <Button onClick={() => updateTime(att)}>Update</Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <Modal show={showUpdateModal} onHide={() => setShowUpdateModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Update Attendance Time</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="modal-body">
+          <TimePicker
+            value={time}
+            onChange={handleTimeChange}
+            format="HH:mm"
+            clockIcon={null} // Disables the clock icon
+          />
+          <div style={{ marginTop: '15px' }}>
+            <button onClick={() => UpdateAttendanceTime(time)}>Submit</button>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowUpdateModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </div>
+  );
+};
+
+export default UpdateAttendance;
